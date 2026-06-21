@@ -1,0 +1,75 @@
+using System;
+using System.Collections.Generic;
+using System.Configuration;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+
+namespace Culinary_Assistant.Services
+{
+    public class SpeechKitService
+    {
+        private readonly string _apiKey;
+        private readonly string _folderId;
+
+        private const string SpeechUrl =
+            "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize";
+
+        public SpeechKitService()
+        {
+            _apiKey =
+                ConfigurationManager.AppSettings["SpeechKitApiKey"];
+
+            _folderId =
+                ConfigurationManager.AppSettings["SpeechKitFolderId"];
+        }
+
+        public async Task<string> GenerateSpeechAsync(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                throw new Exception("Текст для озвучивания пуст.");
+
+            using (var client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.Add(
+                    "Authorization",
+                    $"Api-Key {_apiKey}");
+
+                var content =
+                    new FormUrlEncodedContent(
+                        new[]
+                        {
+                            new KeyValuePair<string,string>("text", text),
+                            new KeyValuePair<string,string>("lang", "ru-RU"),
+                            new KeyValuePair<string,string>("voice", "jane"),
+                            new KeyValuePair<string,string>("format", "mp3"),
+                            new KeyValuePair<string,string>("folderId", _folderId)
+                        });
+
+                var response =
+                    await client.PostAsync(SpeechUrl, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string error =
+                        await response.Content.ReadAsStringAsync();
+
+                    throw new Exception(
+                        "Ошибка SpeechKit:\n" + error);
+                }
+
+                byte[] audioBytes =
+                    await response.Content.ReadAsByteArrayAsync();
+
+                string filePath =
+                    Path.Combine(
+                        Path.GetTempPath(),
+                        $"recipe_{Guid.NewGuid()}.mp3");
+
+                File.WriteAllBytes(filePath, audioBytes);
+
+                return filePath;
+            }
+        }
+    }
+}
